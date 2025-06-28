@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Resources:
+  TNORadioCDNFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.handler
+      Runtime: python3.10
+      MemorySize: 256
+      Timeout: 10
+      Events:
+        TNORadioCDNApi:
+          Type: Api
+          Properties:
+            Path: /get_shows/{show_slug}
+            Method: GET
+        GetAllEpisodes:
+          Type: Api
+          Properties:
+            Path: /get_all_episodes_sorted
+            Method: GET
+        GetEpisodeDetails:
+          Type: Api
+          Properties:
+            Path: /get_episode_details/{episode_id}
+            Method: GET
+        GetShowDetails:
+          Type: Api
+          Properties:
+            Path: /get_show_details/{show_slug}
+            Method: GET
+        SearchEpisodes:
+          Type: Api
+          Properties:
+            Path: /search_episodes
+            Method: GET
+        CreateShowEpisode:
+          Type: Api
+          Properties:
+            Path: /create_show_episode
+            Method: POST
+        # Add additional routes if necessary
+        GetPlaylistItems:
+          Type: Api
+          Properties:
+            Path: /get_playlist_items
+            Method: GET
+        GetYoutubePlaylists:
+          Type: Api
+          Properties:
+            Path: /get_youtube_playlists
+            Method: GET

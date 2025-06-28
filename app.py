@@ -209,18 +209,59 @@ def get_video_stream():
         if not guid:
             return jsonify({"error": "Missing required parameter: guid"}), 400
         
-        myStream = Stream()
+        video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
+        api_key = os.environ.get("BUNNY_API_KEY")
         
         if format_type == 'hls':
-            # Return HLS playlist URL
-            video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
-            hls_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/playlist.m3u8"
-            return jsonify({"url": hls_url}), 200
+            # For HLS, we need to use the API to get the playlist URL
+            if api_key:
+                # Use BunnyCDN API to get the video info and generate proper URL
+                import requests
+                headers = {
+                    'AccessKey': api_key,
+                    'Content-Type': 'application/json'
+                }
+                
+                # Get video info
+                video_url = f"https://video.bunnycdn.com/library/{video_library_id}/videos/{guid}"
+                response = requests.get(video_url, headers=headers)
+                
+                if response.status_code == 200:
+                    video_data = response.json()
+                    # Return the HLS playlist URL
+                    hls_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/playlist.m3u8"
+                    return jsonify({"url": hls_url}), 200
+                else:
+                    return jsonify({"error": "Failed to get video info"}), 500
+            else:
+                # Fallback to direct URL (may not work for private videos)
+                hls_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/playlist.m3u8"
+                return jsonify({"url": hls_url}), 200
         else:
-            # Return direct MP4 URL with specified resolution
-            video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
-            video_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/play_{resolution}.mp4"
-            return jsonify({"url": video_url}), 200
+            # For MP4, try to get the direct URL
+            if api_key:
+                # Use BunnyCDN API to get the video info
+                import requests
+                headers = {
+                    'AccessKey': api_key,
+                    'Content-Type': 'application/json'
+                }
+                
+                # Get video info
+                video_url = f"https://video.bunnycdn.com/library/{video_library_id}/videos/{guid}"
+                response = requests.get(video_url, headers=headers)
+                
+                if response.status_code == 200:
+                    video_data = response.json()
+                    # Return the MP4 URL with specified resolution
+                    mp4_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/play_{resolution}.mp4"
+                    return jsonify({"url": mp4_url}), 200
+                else:
+                    return jsonify({"error": "Failed to get video info"}), 500
+            else:
+                # Fallback to direct URL (may not work for private videos)
+                mp4_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/play_{resolution}.mp4"
+                return jsonify({"url": mp4_url}), 200
             
     except Exception as e:
         logger.error(f"Error getting video stream: {e}")
@@ -235,9 +276,31 @@ def get_video_thumbnail():
             return jsonify({"error": "Missing required parameter: guid"}), 400
         
         video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
-        thumbnail_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/thumbnail.jpg"
+        api_key = os.environ.get("BUNNY_API_KEY")
         
-        return jsonify({"url": thumbnail_url}), 200
+        if api_key:
+            # Use BunnyCDN API to get the video info and thumbnail
+            import requests
+            headers = {
+                'AccessKey': api_key,
+                'Content-Type': 'application/json'
+            }
+            
+            # Get video info
+            video_url = f"https://video.bunnycdn.com/library/{video_library_id}/videos/{guid}"
+            response = requests.get(video_url, headers=headers)
+            
+            if response.status_code == 200:
+                video_data = response.json()
+                # Return the thumbnail URL
+                thumbnail_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/thumbnail.jpg"
+                return jsonify({"url": thumbnail_url}), 200
+            else:
+                return jsonify({"error": "Failed to get video info"}), 500
+        else:
+            # Fallback to direct URL
+            thumbnail_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/thumbnail.jpg"
+            return jsonify({"url": thumbnail_url}), 200
             
     except Exception as e:
         logger.error(f"Error getting video thumbnail: {e}")
@@ -276,7 +339,103 @@ def get_all_episodes_sorted_route():
         print(f"Error fetching episodes: {e}")
         return jsonify({"error": "An error occurred while fetching episodes"}), 500
 
-    
+@app.route('/proxy_video/<guid>', methods=['GET'])
+def proxy_video(guid):
+    try:
+        resolution = request.args.get('resolution', '720p')
+        video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
+        api_key = os.environ.get("BUNNY_API_KEY")
+        
+        if not api_key:
+            return jsonify({"error": "API key not configured"}), 500
+        
+        # Use BunnyCDN API to get the video info
+        import requests
+        headers = {
+            'AccessKey': api_key,
+            'Content-Type': 'application/json'
+        }
+        
+        # Get video info
+        video_url = f"https://video.bunnycdn.com/library/{video_library_id}/videos/{guid}"
+        response = requests.get(video_url, headers=headers)
+        
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to get video info"}), 500
+        
+        video_data = response.json()
+        
+        # Stream the video content through our server
+        stream_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/play_{resolution}.mp4"
+        
+        # Get the video stream with authentication
+        stream_response = requests.get(stream_url, headers=headers, stream=True)
+        
+        if stream_response.status_code != 200:
+            return jsonify({"error": "Failed to get video stream"}), 500
+        
+        # Return the video stream
+        from flask import Response
+        return Response(
+            stream_response.iter_content(chunk_size=8192),
+            content_type=stream_response.headers.get('content-type', 'video/mp4'),
+            headers={
+                'Content-Length': stream_response.headers.get('content-length'),
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=3600'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error proxying video: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/proxy_thumbnail/<guid>', methods=['GET'])
+def proxy_thumbnail(guid):
+    try:
+        video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
+        api_key = os.environ.get("BUNNY_API_KEY")
+        
+        if not api_key:
+            return jsonify({"error": "API key not configured"}), 500
+        
+        # Use BunnyCDN API to get the video info
+        import requests
+        headers = {
+            'AccessKey': api_key,
+            'Content-Type': 'application/json'
+        }
+        
+        # Get video info
+        video_url = f"https://video.bunnycdn.com/library/{video_library_id}/videos/{guid}"
+        response = requests.get(video_url, headers=headers)
+        
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to get video info"}), 500
+        
+        video_data = response.json()
+        
+        # Get the thumbnail with authentication
+        thumbnail_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/thumbnail.jpg"
+        thumbnail_response = requests.get(thumbnail_url, headers=headers)
+        
+        if thumbnail_response.status_code != 200:
+            return jsonify({"error": "Failed to get thumbnail"}), 500
+        
+        # Return the thumbnail
+        from flask import Response
+        return Response(
+            thumbnail_response.content,
+            content_type=thumbnail_response.headers.get('content-type', 'image/jpeg'),
+            headers={
+                'Cache-Control': 'public, max-age=3600'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error proxying thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
+
 def handler(event, context):
     return {
         "statusCode": 200, 

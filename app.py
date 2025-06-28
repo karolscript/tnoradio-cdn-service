@@ -199,6 +199,49 @@ def get_youtube_playlists():
         print(e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/get_video_stream', methods=['GET'])
+def get_video_stream():
+    try:
+        guid = request.args.get('guid')
+        resolution = request.args.get('resolution', '720p')
+        format_type = request.args.get('format', 'mp4')
+        
+        if not guid:
+            return jsonify({"error": "Missing required parameter: guid"}), 400
+        
+        myStream = Stream()
+        
+        if format_type == 'hls':
+            # Return HLS playlist URL
+            video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
+            hls_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/playlist.m3u8"
+            return jsonify({"url": hls_url}), 200
+        else:
+            # Return direct MP4 URL with specified resolution
+            video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
+            video_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/play_{resolution}.mp4"
+            return jsonify({"url": video_url}), 200
+            
+    except Exception as e:
+        logger.error(f"Error getting video stream: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/get_video_thumbnail', methods=['GET'])
+def get_video_thumbnail():
+    try:
+        guid = request.args.get('guid')
+        
+        if not guid:
+            return jsonify({"error": "Missing required parameter: guid"}), 400
+        
+        video_library_id = os.environ.get("BUNNY_VIDEO_LIBRARY_ID", "286671")
+        thumbnail_url = f"https://video.bunnycdn.com/stream/{video_library_id}/{guid}/thumbnail.jpg"
+        
+        return jsonify({"url": thumbnail_url}), 200
+            
+    except Exception as e:
+        logger.error(f"Error getting video thumbnail: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/get_playlist_items', methods=['GET'])
 def get_youtube_playlist_items():

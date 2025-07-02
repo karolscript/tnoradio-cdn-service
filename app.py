@@ -12,7 +12,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+
+# Configure CORS properly
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "http://localhost:3002", 
+            "https://backoffice.tnonetwork.com",
+            "https://sistema.tnoradio.com",
+            "https://sistema.tnonetwork.com",
+            "https://tnoradio.com",
+            "https://tnonetwork.com",
+            "http://82.25.79.43"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+        "supports_credentials": True
+    }
+})
+
 logger = logging.getLogger()
 logger.setLevel("INFO")
 
@@ -22,7 +41,7 @@ STORAGE_API_KEY = os.environ.get("BUNNY_STORAGE_API_KEY")
 
 @app.route("/health")
 def hello_world():
-    return "<p>Hello, World!</p>"
+    return jsonify({"status": "healthy", "message": "CDN Service is running"})
 
 # Nuevos endpoints para upload a Bunny.net
 @app.route('/upload_file', methods=['POST'])
@@ -138,21 +157,30 @@ def get_stream():
     try:
         myStream = Stream()
         theList = myStream.GetVideoLibraryList()
-        return theList
+        return jsonify(theList)
     except Exception as e:
-        print(e)
-        return jsonify("hubo error")
+        logger.error(f"Error in get_stream: {str(e)}")
+        return jsonify({"error": "Internal server error", "message": str(e)}), 500
 
 @app.route('/get_videos',  methods=['GET'])
 def get_videos():
     try:
         stream = request.args.get('collection')
+        logger.info(f"Fetching videos for collection: {stream}")
+        
         myStream = Stream()
         theList = myStream.GetVideosList(stream)
-        return theList
+        
+        # The Stream class now returns JSON, so we can return it directly
+        if isinstance(theList, dict) and "error" in theList:
+            logger.error(f"Stream API error: {theList['error']}")
+            return jsonify(theList), 500
+        
+        return jsonify(theList)
+            
     except Exception as e:
-        print(e)
-        return jsonify("hubo error")
+        logger.error(f"Error in get_videos: {str(e)}")
+        return jsonify({"error": "Internal server error", "message": str(e)}), 500
     
 @app.route('/get_video_by_title',  methods=['GET'])
 def get_video_by_title():
@@ -161,20 +189,20 @@ def get_video_by_title():
         libraryId = request.args.get('libraryId')
         myStream = Stream()
         theVideo = myStream.GetVideoByTitle(libraryId,title)
-        return theVideo
+        return jsonify(theVideo)
     except Exception as e:
-        print(e)
-        return jsonify("hubo error trayendo el video")
+        logger.error(f"Error in get_video_by_title: {str(e)}")
+        return jsonify({"error": "Internal server error", "message": str(e)}), 500
 
 @app.route('/get_stream_collections',  methods=['GET'])
 def get_collections_list():
     try:
         myStream = Stream()
         theList = myStream.GetColletcionsList()
-        return theList
+        return jsonify(theList)
     except Exception as e:
-        print(e)
-        return jsonify("hubo error")
+        logger.error(f"Error in get_collections_list: {str(e)}")
+        return jsonify({"error": "Internal server error", "message": str(e)}), 500
 
 @app.route('/get_shows',  methods=['GET'])
 def get_shows():

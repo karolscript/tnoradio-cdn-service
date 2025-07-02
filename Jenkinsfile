@@ -194,26 +194,41 @@ ENVEOF
                       echo "Symlink target is broken or not executable"
                       # Try to find the actual PM2 in common NVM locations
                       echo "Searching for PM2 in NVM installations..."
-                      NVM_PM2=$(find /root/.nvm -name pm2 2>/dev/null | head -1)
+                      # Look for PM2 executable in NVM bin directories
+                      NVM_PM2=$(find /root/.nvm -name pm2 -type f -executable 2>/dev/null | head -1)
                       if [ -n "$NVM_PM2" ] && [ -x "$NVM_PM2" ]; then
                         PM2_CMD="$NVM_PM2"
-                        echo "Found PM2 in NVM: $PM2_CMD"
+                        echo "Found PM2 executable in NVM: $PM2_CMD"
                       else
-                        # Try other common NVM locations
-                        NVM_PM2=$(find /home/*/.nvm -name pm2 2>/dev/null | head -1)
-                        if [ -n "$NVM_PM2" ] && [ -x "$NVM_PM2" ]; then
-                          PM2_CMD="$NVM_PM2"
-                          echo "Found PM2 in user NVM: $PM2_CMD"
-                        else
-                          # Try to find any PM2 installation
-                          NVM_PM2=$(find / -name pm2 -type f -executable 2>/dev/null | grep -v "/proc/" | head -1)
-                          if [ -n "$NVM_PM2" ]; then
+                        # Try to find PM2 in the current NVM version's bin directory
+                        NVM_CURRENT=$(ls -la /root/.nvm/current 2>/dev/null | awk '{print $NF}' | sed 's|/root/.nvm/versions/node/||')
+                        if [ -n "$NVM_CURRENT" ]; then
+                          NVM_PM2="/root/.nvm/versions/node/$NVM_CURRENT/bin/pm2"
+                          if [ -f "$NVM_PM2" ] && [ -x "$NVM_PM2" ]; then
                             PM2_CMD="$NVM_PM2"
-                            echo "Found PM2 system-wide: $PM2_CMD"
+                            echo "Found PM2 in current NVM version: $PM2_CMD"
                           else
-                            echo "ERROR: Cannot resolve PM2 symlink or find PM2 installation"
-                            exit 1
+                            echo "PM2 not found in current NVM version: $NVM_CURRENT"
+                            # Try other common NVM locations
+                            NVM_PM2=$(find /home/*/.nvm -name pm2 -type f -executable 2>/dev/null | head -1)
+                            if [ -n "$NVM_PM2" ] && [ -x "$NVM_PM2" ]; then
+                              PM2_CMD="$NVM_PM2"
+                              echo "Found PM2 in user NVM: $PM2_CMD"
+                            else
+                              # Try to find any PM2 installation
+                              NVM_PM2=$(find / -name pm2 -type f -executable 2>/dev/null | grep -v "/proc/" | head -1)
+                              if [ -n "$NVM_PM2" ]; then
+                                PM2_CMD="$NVM_PM2"
+                                echo "Found PM2 system-wide: $PM2_CMD"
+                              else
+                                echo "ERROR: Cannot resolve PM2 symlink or find PM2 installation"
+                                exit 1
+                              fi
+                            fi
                           fi
+                        else
+                          echo "ERROR: Cannot resolve PM2 symlink or find PM2 installation"
+                          exit 1
                         fi
                       fi
                     fi

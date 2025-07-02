@@ -88,8 +88,22 @@ pipeline {
               
               # Stop existing service
               echo "Stopping existing CDN service..."
-              pm2 stop ${PM2_APP_NAME} 2>/dev/null || echo "Service not running in PM2"
-              pm2 delete ${PM2_APP_NAME} 2>/dev/null || echo "Service not found in PM2"
+              # Find PM2 for stopping service
+              if command -v pm2 > /dev/null 2>&1; then
+                PM2_CMD="pm2"
+              elif [ -f /usr/local/bin/pm2 ]; then
+                PM2_CMD="/usr/local/bin/pm2"
+              elif [ -f /usr/bin/pm2 ]; then
+                PM2_CMD="/usr/bin/pm2"
+              else
+                PM2_CMD="pm2"
+              fi
+              
+              echo "Current PM2 processes:"
+              $PM2_CMD list 2>/dev/null || echo "PM2 not available yet"
+              
+              $PM2_CMD stop ${PM2_APP_NAME} 2>/dev/null || echo "Service not running in PM2"
+              $PM2_CMD delete ${PM2_APP_NAME} 2>/dev/null || echo "Service not found in PM2"
               
               # Kill any existing processes on port
               if lsof -ti:${SERVICE_PORT} > /dev/null 2>&1; then
@@ -124,9 +138,25 @@ ENVEOF
               echo "Starting CDN service with PM2..."
               cp /tmp/ecosystem.config.js .
               # Ensure virtual environment is activated for PM2
-              export PATH="/opt/${SERVICE_NAME}/venv/bin:$PATH"
-              pm2 start ecosystem.config.js
-              pm2 save
+              export PATH="/opt/${SERVICE_NAME}/venv/bin:/usr/local/bin:/usr/bin:/usr/local/node/bin:/opt/node/bin:$PATH"
+              # Find and use PM2 from common installation paths
+              if command -v pm2 > /dev/null 2>&1; then
+                PM2_CMD="pm2"
+              elif [ -f /usr/local/bin/pm2 ]; then
+                PM2_CMD="/usr/local/bin/pm2"
+              elif [ -f /usr/bin/pm2 ]; then
+                PM2_CMD="/usr/bin/pm2"
+              elif [ -f ~/.npm-global/bin/pm2 ]; then
+                PM2_CMD="~/.npm-global/bin/pm2"
+              else
+                echo "PM2 not found, installing it..."
+                npm install -g pm2
+                PM2_CMD="pm2"
+              fi
+              
+              echo "Using PM2 from: $PM2_CMD"
+              $PM2_CMD start ecosystem.config.js
+              $PM2_CMD save
               
               # Wait for service to start
               echo "Waiting for service to start..."

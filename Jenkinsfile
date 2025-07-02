@@ -37,31 +37,25 @@ pipeline {
             url: 'https://github.com/karolscript/tnoradio-cdn-service.git'
           ]]
         ])
-        dir('tnoradio-cdn-service') {
-          sh 'pwd && ls -la'
-        }
+        sh 'pwd && ls -la'
       }
     }
 
     stage('Install Dependencies') {
       steps {
-        dir('tnoradio-cdn-service') {
-          sh '''
-            echo "Installing Python dependencies..."
-            pip3 install -r requirements.txt
-          '''
-        }
+        sh '''
+          echo "Installing Python dependencies..."
+          pip3 install -r requirements.txt
+        '''
       }
     }
 
     stage('Test Service Locally') {
       steps {
-        dir('tnoradio-cdn-service') {
-          sh '''
-            echo "Testing service locally..."
-            python3 test_cdn.py || echo "Local test failed, continuing with deployment..."
-          '''
-        }
+        sh '''
+          echo "Testing service locally..."
+          python3 test_cdn.py || echo "Local test failed, continuing with deployment..."
+        '''
       }
     }
 
@@ -69,19 +63,17 @@ pipeline {
       steps {
         script {
           // Create deployment package
-          dir('tnoradio-cdn-service') {
-            sh '''
-              echo "Creating deployment package..."
-              tar -czf ../cdn-service-deploy.tar.gz .
-            '''
-          }
+          sh '''
+            echo "Creating deployment package..."
+            tar -czf cdn-service-deploy.tar.gz .
+          '''
           
           // Copy files to VPS
           sh '''
             echo "Copying files to VPS..."
             scp -o StrictHostKeyChecking=no cdn-service-deploy.tar.gz ${VPS_USER}@${VPS_IP}:/tmp/
-            scp -o StrictHostKeyChecking=no tnoradio-cdn-service/nginx.conf ${VPS_USER}@${VPS_IP}:/tmp/nginx-cdn.conf
-            scp -o StrictHostKeyChecking=no tnoradio-cdn-service/ecosystem.config.js ${VPS_USER}@${VPS_IP}:/tmp/
+            scp -o StrictHostKeyChecking=no nginx.conf ${VPS_USER}@${VPS_IP}:/tmp/nginx-cdn.conf
+            scp -o StrictHostKeyChecking=no ecosystem.config.js ${VPS_USER}@${VPS_IP}:/tmp/
           '''
           
           // Execute deployment on VPS

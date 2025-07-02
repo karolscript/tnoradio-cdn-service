@@ -180,6 +180,45 @@ ENVEOF
                   ls -la "$PM2_CMD" 2>/dev/null || echo "Cannot list file details"
                   file "$PM2_CMD" 2>/dev/null || echo "Cannot determine file type"
                   
+                  # Check if it's a broken symlink and try to resolve it
+                  if [ -L "$PM2_CMD" ]; then
+                    echo "PM2 is a symlink, checking target..."
+                    TARGET=$(readlink "$PM2_CMD")
+                    echo "Symlink target: $TARGET"
+                    
+                    # If target exists and is executable, use it
+                    if [ -f "$TARGET" ] && [ -x "$TARGET" ]; then
+                      PM2_CMD="$TARGET"
+                      echo "Using resolved symlink target: $PM2_CMD"
+                    else
+                      echo "Symlink target is broken or not executable"
+                      # Try to find the actual PM2 in common NVM locations
+                      echo "Searching for PM2 in NVM installations..."
+                      NVM_PM2=$(find /root/.nvm -name pm2 2>/dev/null | head -1)
+                      if [ -n "$NVM_PM2" ] && [ -x "$NVM_PM2" ]; then
+                        PM2_CMD="$NVM_PM2"
+                        echo "Found PM2 in NVM: $PM2_CMD"
+                      else
+                        # Try other common NVM locations
+                        NVM_PM2=$(find /home/*/.nvm -name pm2 2>/dev/null | head -1)
+                        if [ -n "$NVM_PM2" ] && [ -x "$NVM_PM2" ]; then
+                          PM2_CMD="$NVM_PM2"
+                          echo "Found PM2 in user NVM: $PM2_CMD"
+                        else
+                          # Try to find any PM2 installation
+                          NVM_PM2=$(find / -name pm2 -type f -executable 2>/dev/null | grep -v "/proc/" | head -1)
+                          if [ -n "$NVM_PM2" ]; then
+                            PM2_CMD="$NVM_PM2"
+                            echo "Found PM2 system-wide: $PM2_CMD"
+                          else
+                            echo "ERROR: Cannot resolve PM2 symlink or find PM2 installation"
+                            exit 1
+                          fi
+                        fi
+                      fi
+                    fi
+                  fi
+                  
                   # Verify the file exists and is executable
                   if [ ! -f "$PM2_CMD" ]; then
                     echo "ERROR: PM2 file not found at $PM2_CMD"

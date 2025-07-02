@@ -65,7 +65,7 @@ pipeline {
           // Create deployment package
           sh '''
             echo "Creating deployment package..."
-            tar -czf cdn-service-deploy.tar.gz .
+            tar -czf cdn-service-deploy.tar.gz --exclude=cdn-service-deploy.tar.gz .
           '''
           
           // Copy files to VPS
@@ -104,7 +104,10 @@ pipeline {
               
               # Install dependencies
               echo "Installing Python dependencies..."
-              pip3 install -r requirements.txt
+              # Create virtual environment
+              python3 -m venv venv
+              source venv/bin/activate
+              pip install -r requirements.txt
               
               # Set up environment variables
               if [ ! -f .env ]; then
@@ -120,6 +123,8 @@ ENVEOF
               # Start service with PM2
               echo "Starting CDN service with PM2..."
               cp /tmp/ecosystem.config.js .
+              # Ensure virtual environment is activated for PM2
+              export PATH="/opt/${SERVICE_NAME}/venv/bin:$PATH"
               pm2 start ecosystem.config.js
               pm2 save
               

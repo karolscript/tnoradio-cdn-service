@@ -5,7 +5,7 @@ module.exports = {
       script: 'gunicorn',
       args: '--bind 0.0.0.0:19000 app:app',
       interpreter: './venv/bin/python',
-      cwd: '/home/api/tnoradio-cdn-service',
+      cwd: '/opt/tnoradio-cdn-service',
       env: {
         NODE_ENV: 'production',
         BUNNY_STORAGE_API_KEY: process.env.BUNNY_STORAGE_API_KEY,

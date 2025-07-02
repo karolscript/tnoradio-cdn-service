@@ -175,6 +175,21 @@ ENVEOF
                 if [ -n "$PM2_PATH" ]; then
                   PM2_CMD="$PM2_PATH"
                   echo "Found PM2 at: $PM2_CMD"
+                  # Debug: show file details
+                  echo "File details:"
+                  ls -la "$PM2_CMD" 2>/dev/null || echo "Cannot list file details"
+                  file "$PM2_CMD" 2>/dev/null || echo "Cannot determine file type"
+                  
+                  # Verify the file exists and is executable
+                  if [ ! -f "$PM2_CMD" ]; then
+                    echo "ERROR: PM2 file not found at $PM2_CMD"
+                    exit 1
+                  fi
+                  if [ ! -x "$PM2_CMD" ]; then
+                    echo "ERROR: PM2 file is not executable at $PM2_CMD"
+                    exit 1
+                  fi
+                  echo "PM2 file verified as executable"
                 else
                   echo "ERROR: PM2 not found anywhere on the system!"
                   echo "Please ensure PM2 is installed and available."
@@ -183,8 +198,28 @@ ENVEOF
               fi
               
               echo "Using PM2 from: $PM2_CMD"
-              $PM2_CMD start ecosystem.config.js
-              $PM2_CMD save
+              echo "Testing PM2 command..."
+              $PM2_CMD --version || echo "PM2 version check failed"
+              
+              # Try to start the service
+              echo "Starting CDN service..."
+              if $PM2_CMD start ecosystem.config.js; then
+                echo "Service started successfully"
+                $PM2_CMD save
+              else
+                echo "Failed to start service with $PM2_CMD"
+                echo "Trying alternative approach..."
+                # Try using which to find the actual PM2
+                WHICH_PM2=$(which pm2 2>/dev/null)
+                if [ -n "$WHICH_PM2" ] && [ -x "$WHICH_PM2" ]; then
+                  echo "Using PM2 from which: $WHICH_PM2"
+                  $WHICH_PM2 start ecosystem.config.js
+                  $WHICH_PM2 save
+                else
+                  echo "ERROR: Cannot start PM2 service"
+                  exit 1
+                fi
+              fi
               
               # Wait for service to start
               echo "Waiting for service to start..."

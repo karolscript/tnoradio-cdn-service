@@ -90,6 +90,12 @@ pipeline {
               echo "Stopping existing CDN service..."
               # Find PM2 for stopping service
               echo "Searching for PM2 to stop existing service..."
+              # Set up Node.js environment first
+              if [ -f /root/.nvm/nvm.sh ]; then
+                source /root/.nvm/nvm.sh
+                nvm use default 2>/dev/null || nvm use node 2>/dev/null || echo "Using current NVM version"
+              fi
+              
               if command -v pm2 > /dev/null 2>&1; then
                 PM2_CMD="pm2"
               elif [ -f /usr/local/bin/pm2 ]; then
@@ -149,6 +155,16 @@ ENVEOF
               cp /tmp/ecosystem.config.js .
               # Ensure virtual environment is activated for PM2
               export PATH="/opt/${SERVICE_NAME}/venv/bin:/usr/local/bin:/usr/bin:/usr/local/node/bin:/opt/node/bin:$PATH"
+              
+              # Set up Node.js environment for PM2
+              echo "Setting up Node.js environment..."
+              if [ -f /root/.nvm/nvm.sh ]; then
+                echo "Loading NVM..."
+                source /root/.nvm/nvm.sh
+                nvm use default 2>/dev/null || nvm use node 2>/dev/null || echo "Using current NVM version"
+                echo "Node.js version: $(node --version 2>/dev/null || echo 'Node not found')"
+                echo "NPM version: $(npm --version 2>/dev/null || echo 'NPM not found')"
+              fi
               # Find and use PM2 from common installation paths
               echo "Searching for PM2 installation..."
               if command -v pm2 > /dev/null 2>&1; then
@@ -263,12 +279,11 @@ ENVEOF
               else
                 echo "Failed to start service with $PM2_CMD"
                 echo "Trying alternative approach..."
-                # Try using which to find the actual PM2
-                WHICH_PM2=$(which pm2 2>/dev/null)
-                if [ -n "$WHICH_PM2" ] && [ -x "$WHICH_PM2" ]; then
-                  echo "Using PM2 from which: $WHICH_PM2"
-                  $WHICH_PM2 start ecosystem.config.js
-                  $WHICH_PM2 save
+                # Try using PM2 from NVM environment
+                if command -v pm2 > /dev/null 2>&1; then
+                  echo "Using PM2 from NVM environment: $(which pm2)"
+                  pm2 start ecosystem.config.js
+                  pm2 save
                 else
                   echo "ERROR: Cannot start PM2 service"
                   exit 1

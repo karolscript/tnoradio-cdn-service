@@ -12,19 +12,31 @@ pipeline {
   triggers {
     GenericTrigger(
       genericVariables: [
-        [key: 'ref', value: '$.push.changes[0].new.name']
+        [key: 'ref', value: '$.ref'],
+        [key: 'repository', value: '$.repository.name'],
+        [key: 'branch', value: '$.ref_name']
       ],
       token: 'jenkins-webhook-lechuzas-cdn',  
-      causeString: 'Triggered by Bitbucket push',
+      causeString: 'Triggered by GitHub push',
       printContributedVariables: true,
-      printPostContent: true
+      printPostContent: true,
+      regexpFilterText: '$ref',
+      regexpFilterExpression: 'refs/heads/main'
     )
   }
   
   stages {
     stage('Checkout') {
       steps {
-        checkout scm
+        checkout([$class: 'GitSCM', 
+          branches: [[name: '*/main']], 
+          doGenerateSubmoduleConfigurations: false, 
+          extensions: [], 
+          submoduleCfg: [], 
+          userRemoteConfigs: [[
+            url: 'https://github.com/karolscript/tnoradio-cdn-service.git'
+          ]]
+        ])
         dir('tnoradio-cdn-service') {
           sh 'pwd && ls -la'
         }

@@ -89,14 +89,24 @@ pipeline {
               # Stop existing service
               echo "Stopping existing CDN service..."
               # Find PM2 for stopping service
+              echo "Searching for PM2 to stop existing service..."
               if command -v pm2 > /dev/null 2>&1; then
                 PM2_CMD="pm2"
               elif [ -f /usr/local/bin/pm2 ]; then
                 PM2_CMD="/usr/local/bin/pm2"
               elif [ -f /usr/bin/pm2 ]; then
                 PM2_CMD="/usr/bin/pm2"
+              elif [ -f /opt/node/bin/pm2 ]; then
+                PM2_CMD="/opt/node/bin/pm2"
+              elif [ -f /usr/local/node/bin/pm2 ]; then
+                PM2_CMD="/usr/local/node/bin/pm2"
               else
-                PM2_CMD="pm2"
+                PM2_PATH=$(find /usr -name pm2 2>/dev/null | head -1)
+                if [ -n "$PM2_PATH" ]; then
+                  PM2_CMD="$PM2_PATH"
+                else
+                  PM2_CMD="pm2"
+                fi
               fi
               
               echo "Current PM2 processes:"
@@ -140,18 +150,36 @@ ENVEOF
               # Ensure virtual environment is activated for PM2
               export PATH="/opt/${SERVICE_NAME}/venv/bin:/usr/local/bin:/usr/bin:/usr/local/node/bin:/opt/node/bin:$PATH"
               # Find and use PM2 from common installation paths
+              echo "Searching for PM2 installation..."
               if command -v pm2 > /dev/null 2>&1; then
                 PM2_CMD="pm2"
+                echo "Found PM2 in PATH"
               elif [ -f /usr/local/bin/pm2 ]; then
                 PM2_CMD="/usr/local/bin/pm2"
+                echo "Found PM2 in /usr/local/bin/pm2"
               elif [ -f /usr/bin/pm2 ]; then
                 PM2_CMD="/usr/bin/pm2"
+                echo "Found PM2 in /usr/bin/pm2"
               elif [ -f ~/.npm-global/bin/pm2 ]; then
                 PM2_CMD="~/.npm-global/bin/pm2"
+                echo "Found PM2 in ~/.npm-global/bin/pm2"
+              elif [ -f /opt/node/bin/pm2 ]; then
+                PM2_CMD="/opt/node/bin/pm2"
+                echo "Found PM2 in /opt/node/bin/pm2"
+              elif [ -f /usr/local/node/bin/pm2 ]; then
+                PM2_CMD="/usr/local/node/bin/pm2"
+                echo "Found PM2 in /usr/local/node/bin/pm2"
               else
-                echo "PM2 not found, installing it..."
-                npm install -g pm2
-                PM2_CMD="pm2"
+                echo "PM2 not found in common locations. Searching system-wide..."
+                PM2_PATH=$(find /usr -name pm2 2>/dev/null | head -1)
+                if [ -n "$PM2_PATH" ]; then
+                  PM2_CMD="$PM2_PATH"
+                  echo "Found PM2 at: $PM2_CMD"
+                else
+                  echo "ERROR: PM2 not found anywhere on the system!"
+                  echo "Please ensure PM2 is installed and available."
+                  exit 1
+                fi
               fi
               
               echo "Using PM2 from: $PM2_CMD"

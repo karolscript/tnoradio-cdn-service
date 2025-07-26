@@ -84,9 +84,9 @@ pipeline {
             echo "Deploying to VPS: ${VPS_IP}"
             echo "Target directory: ${APP_DIR}"
             
-            // Sync files first (excluding only essential files that shouldn't be overwritten)
+            // Copy only essential Python files
             sh """
-              rsync -avz --delete --exclude='.git' --exclude='venv' --exclude='.env' --exclude='__pycache__' --exclude='*.pyc' --exclude='cdn.log' --exclude='test_venv' --exclude='.DS_Store' . ${VPS_USER}@${VPS_IP}:${APP_DIR}
+              scp app.py storage.py youtube.py config.py requirements.txt ${VPS_USER}@${VPS_IP}:${APP_DIR}/
             """
             
             // Create backup on the VPS

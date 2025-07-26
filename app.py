@@ -7,11 +7,20 @@ import os
 import logging
 import json
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
+import time
 
 # Cargar variables de entorno desde .env
 load_dotenv()
 
 app = Flask(__name__)
+
+# Production configuration
+app.config['PROPAGATE_EXCEPTIONS'] = True
+app.config['JSON_SORT_KEYS'] = False
+
+# Trust proxy for proper IP detection behind load balancer
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # Configure CORS properly
 CORS(app, resources={
@@ -32,16 +41,76 @@ CORS(app, resources={
     }
 })
 
-logger = logging.getLogger()
-logger.setLevel("INFO")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app.app_context().push()
 
 STORAGE_API_KEY = os.environ.get("BUNNY_STORAGE_API_KEY")
 
+# Rate limiting middleware
+@app.before_request
+def rate_limit():
+    # Simple rate limiting - 100 requests per minute per IP
+    client_ip = request.remote_addr
+    current_time = time.time()
+    
+    # This is a simple in-memory rate limiter
+    # In production, you might want to use Redis or a more sophisticated solution
+    if not hasattr(app, 'rate_limit_data'):
+        app.rate_limit_data = {}
+    
+    if client_ip in app.rate_limit_data:
+        last_request_time, request_count = app.rate_limit_data[client_ip]
+        if current_time - last_request_time < 60:  # 1 minute window
+            if request_count >= 100:
+                return jsonify({"error": "Rate limit exceeded"}), 429
+            app.rate_limit_data[client_ip] = (last_request_time, request_count + 1)
+        else:
+            app.rate_limit_data[client_ip] = (current_time, 1)
+    else:
+        app.rate_limit_data[client_ip] = (current_time, 1)
+
+# Request timeout middleware
+@app.before_request
+def timeout_middleware():
+    request.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    # Add security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # Log request time
+    if hasattr(request, 'start_time'):
+        duration = time.time() - request.start_time
+        logger.info(f"{request.method} {request.path} - {response.status_code} - {duration:.3f}s")
+    
+    return response
+
 @app.route("/health")
-def hello_world():
-    return jsonify({"status": "healthy", "message": "CDN Service is running"})
+def health_check():
+    return jsonify({
+        "status": "healthy", 
+        "message": "CDN Service is running",
+        "timestamp": time.time(),
+        "service": "tnoradio-cdn-service"
+    })
+
+@app.route("/")
+def root():
+    return jsonify({
+        "service": "tnoradio-cdn-service",
+        "version": "1.0.0",
+        "status": "running"
+    })
 
 # Nuevos endpoints para upload a Bunny.net
 @app.route('/upload_file', methods=['POST'])

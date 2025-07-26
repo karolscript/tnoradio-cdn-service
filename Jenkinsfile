@@ -55,6 +55,7 @@ pipeline {
             [ -f "app.py" ] || { echo "ERROR: app.py not found"; exit 1; }
             [ -f "storage.py" ] || { echo "ERROR: storage.py not found"; exit 1; }
             [ -f "youtube.py" ] || { echo "ERROR: youtube.py not found"; exit 1; }
+            [ -f "stream.py" ] || { echo "ERROR: stream.py not found"; exit 1; }
             [ -f "requirements.txt" ] || { echo "ERROR: requirements.txt not found"; exit 1; }
             echo "✅ All critical files validated"
           '''
@@ -86,7 +87,7 @@ pipeline {
             
             // Copy only essential Python files
             sh """
-              scp app.py storage.py youtube.py config.py requirements.txt ${VPS_USER}@${VPS_IP}:${APP_DIR}/
+              scp app.py storage.py youtube.py stream.py config.py requirements.txt ${VPS_USER}@${VPS_IP}:${APP_DIR}/
             """
             
             // Create backup on the VPS
@@ -111,7 +112,7 @@ pipeline {
             
             // Verify critical files were copied
             sh """
-              ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && echo "Verifying critical files:" && ls -la app.py storage.py youtube.py config.py requirements.txt || echo "Some critical files are missing!"'
+              ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && echo "Verifying critical files:" && ls -la app.py storage.py youtube.py stream.py config.py requirements.txt || echo "Some critical files are missing!"'
             """
             
             // Stop existing gunicorn processes and restart the service

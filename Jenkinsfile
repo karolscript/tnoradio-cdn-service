@@ -15,7 +15,7 @@ pipeline {
         [key: 'ref', value: '$.push.changes[0].new.name']
       ],
       token: 'jenkins-webhook-lechuzas-cdn',  
-      causeString: 'Triggered by Bitbucket push',
+      causeString: 'Triggered by github push',
       printContributedVariables: true,
       printPostContent: true
     )
@@ -30,8 +30,8 @@ pipeline {
         }
         git(
           branch: 'main',
-          url: 'https://karolscript@bitbucket.org/tnoradio/tnoradio-cdn-service.git',
-          credentialsId: 'bitbucket-app-pass'
+          url: 'https://github.com/karolscript/tnoradio-cdn-service.git',
+          credentialsId: 'ssh-tnonetwork'
         )
       }
     }

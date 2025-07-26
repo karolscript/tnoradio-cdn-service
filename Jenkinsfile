@@ -3,9 +3,9 @@ pipeline {
   environment {
     VPS_USER = 'root'
     VPS_IP = '82.25.79.43'
-    APP_DIR = '/opt/tnoradio-cdn-service'
+    APP_DIR = '/home/api/tnoradio-cdn-service'
     SERVICE_PORT = '19000'
-    PM2_APP_NAME = 'cdn'
+    APP_NAME = 'tnoradio-cdn-service'
     NODE_ENV = 'production'
   }
   
@@ -55,7 +55,7 @@ pipeline {
             
             // Sync files first (excluding venv, .git, .env, and __pycache__)
             sh """
-              rsync -avz --delete --exclude='.git' --exclude='venv' --exclude='.env' --exclude='__pycache__' --exclude='*.pyc' . ${VPS_USER}@${VPS_IP}:${APP_DIR}
+              rsync -avz --delete --exclude='.git' --exclude='venv' --exclude='.env' --exclude='__pycache__' --exclude='*.pyc' --exclude='cdn.log' . ${VPS_USER}@${VPS_IP}:${APP_DIR}
             """
             
             // Create backup on the VPS
@@ -68,29 +68,19 @@ pipeline {
               ssh ${VPS_USER}@${VPS_IP} 'chown -R ${VPS_USER}:${VPS_USER} ${APP_DIR}'
             """
             
-            // Install PM2 globally if not already installed
-            sh """
-              ssh ${VPS_USER}@${VPS_IP} 'npm install -g pm2 2>/dev/null || true'
-            """
-            
             // Set up Python virtual environment and install dependencies
             sh """
               ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt'
             """
 
-            // Copy .env file if it doesn't exist (preserve existing one)
+            // Preserve existing .env file (don't overwrite it)
             sh """
-              ssh ${VPS_USER}@${VPS_IP} 'if [ ! -f ${APP_DIR}/.env ]; then cat > ${APP_DIR}/.env << EOF
-BUNNY_STORAGE_API_KEY=your_bunny_storage_api_key_here
-BUNNY_API_KEY=your_bunny_api_key_here
-BUNNY_VIDEO_LIBRARY_ID=286671
-EOF
-echo ".env file created, please update with actual API keys"; fi'
+              ssh ${VPS_USER}@${VPS_IP} 'echo "Preserving existing .env file with API keys"'
             """
             
-            // Restart the service with PM2
+            // Stop existing gunicorn processes and restart the service
             sh """
-              ssh ${VPS_USER}@${VPS_IP} 'source /root/.nvm/nvm.sh && cd ${APP_DIR} && pm2 restart ${PM2_APP_NAME} || (pm2 start ecosystem.config.js --env production)'
+              ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && pkill -f gunicorn || true && sleep 2 && nohup ./venv/bin/python /usr/bin/gunicorn --bind 0.0.0.0:${SERVICE_PORT} --workers 2 --worker-class sync --timeout 30 --keep-alive 2 --max-requests 1000 --max-requests-jitter 100 app:app > cdn.log 2>&1 &'
             """
             
             echo "Deployment completed successfully!"
@@ -101,13 +91,17 @@ echo ".env file created, please update with actual API keys"; fi'
         success {
           script {
             echo "✅ Deployment successful!"
-            // Check PM2 status
+            // Check if gunicorn processes are running
             sh """
-              ssh ${VPS_USER}@${VPS_IP} 'source /root/.nvm/nvm.sh && pm2 status ${PM2_APP_NAME}'
+              ssh ${VPS_USER}@${VPS_IP} 'ps aux | grep gunicorn | grep -v grep || echo "No gunicorn processes found"'
             """
             // Check if service is responding
             sh """
               ssh ${VPS_USER}@${VPS_IP} 'curl -s http://localhost:${SERVICE_PORT}/health || echo "Health check failed"'
+            """
+            // Check recent logs
+            sh """
+              ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && tail -10 cdn.log || echo "No log file found"'
             """
           }
         }

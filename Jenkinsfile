@@ -1,5 +1,9 @@
 pipeline {
   agent any
+  options {
+    timeout(time: 10, unit: 'MINUTES')
+    retry(1)
+  }
   environment {
     VPS_USER = 'root'
     VPS_IP = '82.25.79.43'
@@ -7,6 +11,8 @@ pipeline {
     SERVICE_PORT = '19000'
     APP_NAME = 'tnoradio-cdn-service'
     NODE_ENV = 'production'
+    DEPLOYMENT_TIMEOUT = '300'
+    HEALTH_CHECK_RETRIES = '3'
   }
   
   triggers {
@@ -42,6 +48,31 @@ pipeline {
           echo "Validating deployment configuration..."
           sh 'ls -la'
           sh 'cat requirements.txt | head -10'
+          
+          // Validate critical files exist
+          sh '''
+            echo "Validating critical files..."
+            [ -f "app.py" ] || { echo "ERROR: app.py not found"; exit 1; }
+            [ -f "storage.py" ] || { echo "ERROR: storage.py not found"; exit 1; }
+            [ -f "youtube.py" ] || { echo "ERROR: youtube.py not found"; exit 1; }
+            [ -f "requirements.txt" ] || { echo "ERROR: requirements.txt not found"; exit 1; }
+            echo "✅ All critical files validated"
+          '''
+        }
+      }
+    }
+    
+    stage('Test') {
+      steps {
+        script {
+          echo "Running basic tests..."
+          sh '''
+            echo "Testing Python syntax..."
+            python3 -m py_compile app.py || { echo "ERROR: app.py has syntax errors"; exit 1; }
+            python3 -m py_compile storage.py || { echo "ERROR: storage.py has syntax errors"; exit 1; }
+            python3 -m py_compile youtube.py || { echo "ERROR: youtube.py has syntax errors"; exit 1; }
+            echo "✅ All Python files compiled successfully"
+          '''
         }
       }
     }
@@ -70,7 +101,7 @@ pipeline {
             
             // Set up Python virtual environment and install dependencies
             sh """
-              ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt && echo "Dependencies installed successfully"'
+              ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt && echo "Dependencies installed successfully"' || { echo "ERROR: Failed to install dependencies"; exit 1; }
             """
 
             // Preserve existing .env file (don't overwrite it)
@@ -98,23 +129,70 @@ pipeline {
             echo "✅ Deployment successful!"
             // Wait a moment for service to start
             sh 'sleep 5'
+            
             // Check if gunicorn processes are running
             sh """
               ssh ${VPS_USER}@${VPS_IP} 'ps aux | grep gunicorn | grep -v grep || echo "No gunicorn processes found"'
             """
-            // Check if service is responding
+            
+            // Health check with retries
             sh """
-              ssh ${VPS_USER}@${VPS_IP} 'curl -s http://localhost:${SERVICE_PORT}/health || echo "Health check failed"'
+              for i in {1..${HEALTH_CHECK_RETRIES}}; do
+                echo "Health check attempt \$i/${HEALTH_CHECK_RETRIES}"
+                if ssh ${VPS_USER}@${VPS_IP} 'curl -s -f http://localhost:${SERVICE_PORT}/health > /dev/null'; then
+                  echo "✅ Health check passed"
+                  break
+                else
+                  echo "❌ Health check failed, attempt \$i"
+                  if [ \$i -eq ${HEALTH_CHECK_RETRIES} ]; then
+                    echo "❌ All health check attempts failed"
+                    exit 1
+                  fi
+                  sleep 10
+                fi
+              done
             """
+            
             // Check recent logs
             sh """
               ssh ${VPS_USER}@${VPS_IP} 'cd ${APP_DIR} && tail -10 cdn.log || echo "No log file found"'
             """
+            
+            // Test API endpoints
+            sh """
+              echo "Testing API endpoints..."
+              ssh ${VPS_USER}@${VPS_IP} 'curl -s http://localhost:${SERVICE_PORT}/health | jq .status || echo "Health endpoint test failed"'
+            """
           }
         }
         failure {
-          echo "❌ Deployment failed!"
-          // Optionally add notification here (email, Slack, etc.)
+          script {
+            echo "❌ Deployment failed! Attempting rollback..."
+            
+            // Rollback to previous backup
+            sh """
+              ssh ${VPS_USER}@${VPS_IP} '
+                cd ${APP_DIR}
+                LATEST_BACKUP=\$(ls -t ${APP_DIR}-backup-* | head -1)
+                if [ -n "\$LATEST_BACKUP" ]; then
+                  echo "Rolling back to: \$LATEST_BACKUP"
+                  rm -rf ${APP_DIR}-failed-\$(date +%Y%m%d-%H%M%S)
+                  mv ${APP_DIR} ${APP_DIR}-failed-\$(date +%Y%m%d-%H%M%S)
+                  cp -r \$LATEST_BACKUP ${APP_DIR}
+                  cd ${APP_DIR}
+                  pkill -f gunicorn || true
+                  sleep 2
+                  nohup ./venv/bin/python /usr/bin/gunicorn --bind 0.0.0.0:${SERVICE_PORT} --workers 2 --worker-class sync --timeout 30 --keep-alive 2 --max-requests 1000 --max-requests-jitter 100 app:app > cdn.log 2>&1 &
+                  echo "Rollback completed"
+                else
+                  echo "No backup found for rollback"
+                fi
+              '
+            """
+            
+            // Optionally add notification here (email, Slack, etc.)
+            echo "Rollback completed. Please check the service manually."
+          }
         }
       }
     }
